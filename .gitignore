@@ -1,0 +1,38 @@
+# Ignore secrets
+secrets.toml
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environment
+.venv/
+.env/
+
+# IDE files
+.vscode/
+.idea/
+
+# Other cache files
+*.db
+*.log
+# Ignore secrets
+secrets.toml
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environment
+.venv/
+.env/
+
+# IDE files
+.vscode/
+.idea/
+
+# Other cache files
+*.db
+*.log
