@@ -19,7 +19,10 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 
 SCOPES = ["https://www.googleapis.com/auth/drive"]
 
-json_data = {"token": "ya29.a0AXeO80Qc7xkJ4csPlRY40nlv4QhP1L5Foaea7G7PSOBrLJajhChWuR5r6Jqm70LMfUHHazqELTP14BHjOBs3F0Lu3SoE_ORSJa-LI5I0SzwiW5DhuveWaHa2Iud-RxUjc8P6jlRo8ddH7kahI7ItR9y2tx0qLqxEZzZ0JzaHaCgYKAc4SARMSFQHGX2MiEXQOi6mJADhIYL3iyNMJcw0175", "refresh_token": "1//0gBIL6bBS-pjECgYIARAAGBASNwF-L9IrG2CRU7_VMSOZQCuS06l6haxaOMiZ0q6fFoqOnFQR8LQ8zEKOfnW1qsOUtt0B8w46Hk0", "token_uri": "https://oauth2.googleapis.com/token", "client_id": "524126803000-ihcg0d6m1q72a17b7sa04hcq7kljdq31.apps.googleusercontent.com", "client_secret": "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", "scopes": ["https://www.googleapis.com/auth/drive"], "universe_domain": "googleapis.com", "account": "", "expiry": "2025-01-25T19:50:11.401224Z"}
+json_data = dict(st.secrets["gdrive_auth"]["token_json"])
+
+# Convert to a JSON string if needed
+json_string = json.dumps(json_data)
 
 IMAGE_FOLDER = "downloaded_images"
 
