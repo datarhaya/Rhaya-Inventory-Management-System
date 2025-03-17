@@ -1,0 +1,14 @@
+[[pages]]
+path = "pages/dashboard.py"
+name = "Rhaya Flicks Inventory Management Center"
+icon = ""
+
+[[pages]]
+path = "pages/detail_products.py"
+name = "Product Details"
+icon = "🎞️"
+
+[[pages]]
+path = "pages/add_items.py"
+name = "Add Inventory Item"
+icon = "🎞️"

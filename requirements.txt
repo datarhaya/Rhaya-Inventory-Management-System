@@ -1,0 +1,7 @@
+streamlit
+st_pages
+st-gsheets-connection
+pandas
+pillow
+requests
+plotly
