@@ -19,6 +19,9 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 
 SCOPES = ["https://www.googleapis.com/auth/drive"]
 
+if st.session_state["barcode"]:
+    st.write(st.session_state["barcode"])
+
 json_data = dict(st.secrets["gdrive_auth"]["token_json"])
 
 # Convert to a JSON string if needed

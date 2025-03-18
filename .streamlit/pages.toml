@@ -6,9 +6,14 @@ icon = ""
 [[pages]]
 path = "pages/detail_products.py"
 name = "Product Details"
-icon = "🎞️"
+icon = ""
 
 [[pages]]
 path = "pages/add_items.py"
 name = "Add Inventory Item"
-icon = "🎞️"
+icon = ""
+
+[[pages]]
+path = "pages/scan_barcode.py"
+name = "Search Inventory Item"
+icon = ""
