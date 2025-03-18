@@ -30,15 +30,19 @@ col3.metric("Ownership Distribution", f"See Table Below")
 st.subheader("Ownership Percentage")
 st.dataframe(ownership_percentage)
 
-# Add Item Button
-if st.button("➕ Add New Item"):
-    st.switch_page("pages/add_items.py")
+col1, col2 = st.columns(2)
+
+with col1:# Add Item Button
+    if st.button("➕ Add New Item"):
+        st.switch_page("pages/add_items.py")
+with col2:
+    if st.button("Scan Barcode"):
+        st.switch_page("pages/scan_barcode.py")
 
 # Display Table with Radio Button for Selection
 st.subheader("Inventory Details")
 important_columns = ["Nomor Asset", "Nama Asset", "Tahun Beli", "Bulan Beli"]
 data_filtered = data[important_columns]
-
 
 # Show filtered table
 event = st.dataframe(
