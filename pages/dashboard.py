@@ -5,12 +5,14 @@ from io import BytesIO
 import pathlib
 from datetime import datetime
 import pandas as pd
+import plotly.express as px
+
 
 with open( pathlib.Path("app/styles.css") ) as f:
     st.markdown(f'<style>{f.read()}</style>' , unsafe_allow_html= True)
 
-st.title("Welcome to our internal database!")
-st.write("Halaman ini dirancang untuk membantu seluruh tim menemukan informasi relevan terkait proyek film yang ditangani oleh Rhaya Flicks. Untuk mengakses berbagai marketing items serta informasi film, kamu bisa menekan tombol “see more”. Segala masukan terkait dengan halaman ini dapat ditujukan pada data@rhayaflicks.com.")
+st.title("Welcome to our Inventory database!")
+st.write("Halaman ini dirancang untuk membantu tim Admin & Finance menemukan informasi relevan terkait item inventaris Rhaya Flicks. Segala masukan terkait dengan halaman ini dapat ditujukan pada data@rhayaflicks.com.")
 st.divider()
 
 data = st.session_state['data']
@@ -24,23 +26,36 @@ ownership_percentage = (data["Kepemilikan"].value_counts(normalize=True) * 100).
 
 col1.metric("Total Items", total_items)
 col2.metric("Total Acquisition Price", f"Rp {total_price:,.2f}")
-col3.metric("Ownership Distribution", f"See Table Below")
+st.metric("Ownership Distribution", f"")
 
-# Ownership Percentage Table
-st.subheader("Ownership Percentage")
-st.dataframe(ownership_percentage)
+# Convert ownership data into a DataFrame
+ownership_df = pd.DataFrame({
+    "Kepemilikan": ownership_percentage.index,
+    "Percentage": ownership_percentage.values
+})
 
-col1, col2 = st.columns(2)
+# Create Pie Chart
+fig = px.pie(ownership_df, 
+             names="Kepemilikan", 
+             values="Percentage", 
+            #  title="Ownership Distribution",
+             hole=0.3)  # Creates a donut-style pie chart
 
-with col1:# Add Item Button
-    if st.button("➕ Add New Item"):
-        st.switch_page("pages/add_items.py")
-with col2:
-    if st.button("Scan Barcode"):
-        st.switch_page("pages/scan_barcode.py")
+
+st.plotly_chart(fig, use_container_width=True)
+
+
+if st.button("Scan Barcode to Search Inventory"):
+    st.switch_page("pages/scan_barcode.py")
 
 # Display Table with Radio Button for Selection
-st.subheader("Inventory Details")
+col1, col2 = st.columns([0.6, 0.4])
+with col1:
+    st.subheader("Inventory Details") 
+with col2:  
+    if st.button("➕ Add New Item"):
+        st.switch_page("pages/add_items.py")
+
 important_columns = ["Nomor Asset", "Nama Asset", "Tahun Beli", "Bulan Beli"]
 data_filtered = data[important_columns]
 

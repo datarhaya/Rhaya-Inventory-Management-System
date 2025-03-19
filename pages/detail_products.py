@@ -1,38 +1,23 @@
 import streamlit as st
-import streamlit.components.v1 as components
-
-import pandas as pd
-import plotly.express as px 
-
-import requests
-from io import BytesIO
-from PIL import Image
-
 import os
 import re
 import json
-import requests
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
+from PIL import Image
 
+# Google Drive API Setup
 SCOPES = ["https://www.googleapis.com/auth/drive"]
-
-if st.session_state["barcode"]:
-    st.write(st.session_state["barcode"])
-
 json_data = dict(st.secrets["gdrive_auth"]["token_json"])
-
-# Convert to a JSON string if needed
-json_string = json.dumps(json_data)
-
 IMAGE_FOLDER = "downloaded_images"
 
 def get_drive_service():
     creds = None
     token_path = "token.json"
     json_path = "token.json"
+    
     with open(json_path, "w") as json_file:
         json.dump(json_data, json_file)
 
@@ -59,76 +44,124 @@ def list_images_in_folder(service, folder_id):
     results = service.files().list(q=query, fields="files(id, name)").execute()
     return results.get("files", [])
 
-def download_images(service, images, save_dir=IMAGE_FOLDER):
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
+def download_image(service, image_id, image_name):
+    """Download a single image from Google Drive."""
+    image_path = os.path.join(IMAGE_FOLDER, image_name)
+    
+    if not os.path.exists(IMAGE_FOLDER):
+        os.makedirs(IMAGE_FOLDER)
 
-    downloaded_files = []
-    for image in images:
-        image_id = image["id"]
-        image_name = image["name"]
-        image_path = os.path.join(save_dir, image_name)
+    request = service.files().get_media(fileId=image_id)
+    with open(image_path, "wb") as f:
+        f.write(request.execute())
 
-        request = service.files().get_media(fileId=image_id)
-        with open(image_path, "wb") as f:
-            f.write(request.execute())
+    return image_path
 
-        downloaded_files.append(image_path)
+# Function to format numbers without decimals
+def format_number(value):
+    try:
+        num = float(value)
+        if num.is_integer():
+            return f"{int(num):,}"  # Format with thousand separator (e.g., 1,000,000)
+        return f"{num:,.0f}"  # Force no decimals
+    except ValueError:
+        return value  # Return original if not a number
 
-    return downloaded_files
 
 # Streamlit App
-st.title("Google Drive Image Downloader")
+st.title("📦 Asset Details")
+col1, col2, col3 = st.columns(3)
+with col1:
+    if st.button("⬅️ Back to Home"):
+        st.switch_page("pages/dashboard.py")
 
-if st.button("back"):
-    st.switch_page("pages/dashboard.py")
+with col2:
+    if st.button("Edit Items"):
+        st.switch_page("pages/edit_items.py")
 
-st.write(st.session_state.selected_item["Nomor Asset"])
+drive_url = st.session_state.selected_item["Dokumentasi"]
 
-drive_url = st.session_state.selected_item["Dokumentasi_url"]
-st.write(drive_url)
+if drive_url:
+    service = get_drive_service()
+    folder_id = extract_folder_id(drive_url)
 
-if st.button("Fetch & Download Images"):
-    if drive_url:
-        service = get_drive_service()
-        folder_id = extract_folder_id(drive_url)
+    if folder_id:
+        images = list_images_in_folder(service, folder_id)
 
-        if folder_id:
-            images = list_images_in_folder(service, folder_id)
-            if images:
-                st.success(f"Found {len(images)} images. Downloading...")
-                downloaded_images = download_images(service, images)
+        if images:
+            # Download only the first image
+            first_image = images[0]
+            first_image_path = download_image(service, first_image["id"], first_image["name"])
 
-                # Save paths in session state
-                st.session_state.pathsImages = downloaded_images
-                st.session_state.counter = 0
-                st.success("Download complete! Click 'Show next pic' to view images.")
-            else:
-                st.warning("No images found in the folder.")
+            # Layout: Image on the left, key details on the right
+            col1, col2 = st.columns([3, 5])
+
+            with col1:
+                st.image(first_image_path, caption="📷 Asset Image", use_container_width=True)
+
+            with col2:
+                st.write("### 📄 Asset Information")
+                # Upper-right fields
+                details_top = {
+                    "🆔 Nomor Asset": "Nomor Asset",
+                    "📍 Penempatan Aset": "PENEMPATAN ASET",
+                    "🔗 Sumber": "Sumber",
+                    "🏷️ Kelompok Aset": "Kelompok Aset",
+                    "📝 Kepemilikan": "Kepemilikan",
+                    "📆 Pembelian": f"{st.session_state.selected_item.get('Bulan Beli', '')} - {st.session_state.selected_item.get('Tahun Beli', '')}",
+                    "📊 Qty": "Qty",
+                    "🖼️ Dokumentasi": "Dokumentasi",
+                    "🧾 Invoice": "Invoice",
+                    "📌 Status": "Status",
+                }
+
+                # Display in col2 (Right Side)
+                with col2:
+                    for label, field in details_top.items():
+                        value = str(st.session_state.selected_item.get(field, "")).strip()
+
+                        # Show only non-empty values
+                        if value and value != "-":
+                            st.write(f"**{label}:** {value}")
+
+
+            # Below Section - Financial Information
+            st.write("---")
+            st.write("### 💰 Financial & Valuation Details")
+
+            details_bottom = {
+                "💰 Harga Perolehan": "Harga Perolehan",
+                "📆 Pembelian": f"{st.session_state.selected_item.get('Bulan Beli', '')} - {st.session_state.selected_item.get('Tahun Beli', '')}",
+                "📈 Umur Ekonomis (years)": "Umur Ekonomis",
+                "📉 Nilai Penyusutan per Bulan": "Nilai Penyusutan per Bulan",
+                "💎 Valuasi Asset 2019": "VALUASI ASSET 2019",
+                "💎 Valuasi Asset 2020": "VALUASI ASSET 2020",
+                "💎 Valuasi Asset 2021": "VALUASI ASSET 2021",
+                "💎 Valuasi Asset 2022": "VALUASI ASSET 2022",
+                "💎 Valuasi Asset 2023": "VALUASI ASSET 2023",
+                "💎 Valuasi Asset 2024": "VALUASI ASSET 2024",
+                "💎 Valuasi Asset 2025": "VALUASI ASSET 2025",
+                "🏦 Nilai Buku 2024": "Nilai Buku 2024",
+                "📌 Status": "Status",
+                "🔖 Label": "Label"
+            }
+
+            for label, field in details_bottom.items():
+                value = str(st.session_state.selected_item.get(field, "")).strip()
+                # Apply formatting for numeric fields
+                if field in ["Harga Perolehan", "Umur Ekonomis", "Nilai Penyusutan per Bulan",
+                            "VALUASI ASSET 2019", "VALUASI ASSET 2020", "VALUASI ASSET 2021",
+                            "VALUASI ASSET 2022", "VALUASI ASSET 2023", "VALUASI ASSET 2024",
+                            "VALUASI ASSET 2025", "Nilai Buku 2024"]:
+                    value = format_number(value)
+
+                # Only display non-empty values
+                if value and value != "-":
+                    st.write(f"**{label}:** {value}")
+     
         else:
-            st.error("Invalid Google Drive URL.")
+            st.warning("⚠️ No images found in the folder.")
     else:
-        st.warning("Please enter a valid Google Drive folder URL.")
-
-# Display Images
-col1, col2 = st.columns(2)
-
-if "pathsImages" in st.session_state and st.session_state.pathsImages:
-    col1.subheader("List of images in folder")
-    col1.write(st.session_state.pathsImages)
-
-    def showPhoto():
-        if "counter" in st.session_state and st.session_state.pathsImages:
-            photo = st.session_state.pathsImages[st.session_state.counter]
-            col2.image(photo, caption=os.path.basename(photo))
-            col1.write(f"Index: {st.session_state.counter}")
-
-            # Increment counter
-            st.session_state.counter += 1
-            if st.session_state.counter >= len(st.session_state.pathsImages):
-                st.session_state.counter = 0
-
-    show_btn = col1.button("Show next pic ⏭️", on_click=showPhoto)
-
-
-
+        st.error("❌ Invalid Google Drive URL.")
+else:
+    st.warning("⚠️ Please enter a valid Google Drive folder URL.")

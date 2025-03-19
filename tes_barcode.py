@@ -1,10 +1,10 @@
-# import EAN13 from barcode module 
-import barcode
-from barcode.writer import ImageWriter 
-import re
+import qrcode
 
+# Generate QR Code
 inventory_code = "INV.RHF.001/XI/2020"
-code39 = barcode.get_barcode_class("code39")
-barcode_instance = code39(inventory_code, writer=ImageWriter())
+qr = qrcode.make(inventory_code)
 
-barcode_instance.save("new_code1")
+# Save as image
+qr.save("qr_code.png")
+
+print("✅ QR Code saved as 'qr_code.png'")

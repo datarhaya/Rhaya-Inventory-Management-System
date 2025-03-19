@@ -36,3 +36,8 @@ __pycache__/
 # Other cache files
 *.db
 *.log
+
+token_sheet.json
+token.json
+*.png
+./downloaded_images
