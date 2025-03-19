@@ -17,3 +17,8 @@ icon = ""
 path = "pages/scan_barcode.py"
 name = "Search Inventory Item"
 icon = ""
+
+[[pages]]
+path = "pages/edit_items.py"
+name = "Edit Inventory Item"
+icon = ""
