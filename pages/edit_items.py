@@ -120,10 +120,19 @@ if submitted:
 
     st.success("✅ Asset details updated successfully!")
 
-    # Update session state
-    for key, value in zip(["Nama Asset", "PENEMPATAN ASET", "Sumber", "Kelompok Aset", "Kepemilikan", "Qty", "Harga Perolehan",
-                           "Tahun Beli", "Bulan Beli", "Umur Ekonomis", "Nilai Penyusutan per Bulan", *valuasi_fields, "Status", "Label"], update_values):
+   # Update session state
+    session_keys = [
+        "Nomor Asset", "PENEMPATAN ASET", "Sumber", "Nama Asset", "Kelompok Aset", "Kepemilikan", "Qty",
+        "Dokumentasi", "Invoice", "Harga Perolehan", "Tahun Beli", "Bulan Beli", "Umur Ekonomis",
+        "Nilai Penyusutan per Bulan", 
+        "VALUASI ASSET 2019", "VALUASI ASSET 2020", "VALUASI ASSET 2021", "VALUASI ASSET 2022",
+        "VALUASI ASSET 2023", "VALUASI ASSET 2024", "VALUASI ASSET 2025",
+        "Nilai Buku 2024", "Status", "Label"
+    ]
+
+    for key, value in zip(session_keys, update_values):
         st.session_state.selected_item[key] = value
+
 
 # Back button
 if st.button("⬅️ Back to Asset Details"):
