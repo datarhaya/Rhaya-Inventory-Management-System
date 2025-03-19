@@ -77,13 +77,12 @@ class GsheetConnection:
         except HttpError as err:
             print(f"Error: {err}")
 
-    def update_data(self, index, updated_row):
+    def update_data(self, index, updated_row, update_range):
         try:
-            range_to_update = f"{self.sheet_name}!A{index+2}:X{index+2}"
             body = {"values": [updated_row]}
             self.service.spreadsheets().values().update(
                 spreadsheetId=self.spreadsheet_id,
-                range=range_to_update,
+                range=update_range,  # Use the dynamically determined range
                 valueInputOption="USER_ENTERED",
                 body=body
             ).execute()
