@@ -2,11 +2,14 @@ import streamlit as st
 import os
 import re
 import json
+import textwrap
+import qrcode
+from io import BytesIO
+from PIL import Image, ImageDraw, ImageFont
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
-from PIL import Image
 
 # Google Drive API Setup
 SCOPES = ["https://www.googleapis.com/auth/drive"]
@@ -66,7 +69,76 @@ def format_number(value):
         return f"{num:,.0f}"  # Force no decimals
     except ValueError:
         return value  # Return original if not a number
+    
+# Function to generate asset label
+def generate_label(nomor_asset, kepemilikan, nama_asset):
+    label_width, label_height = 227, 151  # 60mm x 40mm at 96 DPI
 
+    # Create blank label
+    label = Image.new("RGB", (label_width, label_height), "white")
+    draw = ImageDraw.Draw(label)
+
+    # Generate QR Code
+    qr = qrcode.QRCode(box_size=3, border=2)
+    qr.add_data(nomor_asset)
+    qr.make(fit=True)
+    qr_img = qr.make_image(fill="black", back_color="white")
+
+    # Resize QR Code
+    qr_size = 90  
+    qr_img = qr_img.resize((qr_size, qr_size))
+
+    # Load font
+    try:
+        font = ImageFont.truetype("arial.ttf", 14)
+    except IOError:
+        font = ImageFont.load_default()
+
+    # Position QR Code
+    qr_x = 5
+    qr_y = (label_height - qr_size) // 2
+    label.paste(qr_img, (qr_x, qr_y))
+
+    # Text positions
+    text_x = qr_x + qr_size + 5  
+    text_y = qr_y + 7
+
+    # Wrap text for Nama Asset (Max 2 Lines)
+    max_width = label_width - text_x - 5  
+    wrapped_lines = textwrap.wrap(nama_asset, width=20)  
+    if len(wrapped_lines) > 2:
+        wrapped_nama_asset = wrapped_lines[:2]
+        wrapped_nama_asset[-1] += "..."  # Add ellipses if exceeded
+    else:
+        wrapped_nama_asset = wrapped_lines
+
+    # Draw text
+    draw.text((text_x, text_y), f"{nomor_asset}", font=font, fill="black")  # Nomor Asset
+    draw.text((text_x, text_y + 20), f"{kepemilikan}", font=font, fill="black")  # Kepemilikan
+    
+    for i, line in enumerate(wrapped_nama_asset):
+        draw.text((text_x, text_y + 40 + (i * 20)), f"{line}", font=font, fill="black")
+
+    # Save to memory
+    img_bytes = BytesIO()
+    label.save(img_bytes, format="PNG")
+    img_bytes.seek(0)
+
+    return img_bytes
+
+# Function to generate QR code separately
+def generate_qr_code(nomor_asset):
+    qr = qrcode.QRCode(box_size=10, border=2)
+    qr.add_data(nomor_asset)
+    qr.make(fit=True)
+    qr_img = qr.make_image(fill="black", back_color="white")
+
+    # Save to memory
+    img_bytes = BytesIO()
+    qr_img.save(img_bytes, format="PNG")
+    img_bytes.seek(0)
+
+    return img_bytes
 
 # Streamlit App
 st.title("📦 Asset Details")
@@ -79,89 +151,93 @@ with col2:
     if st.button("Edit Items"):
         st.switch_page("pages/edit_items.py")
 
-drive_url = st.session_state.selected_item["Dokumentasi"]
+with col3:
+    # Fetch asset details
+    nomor_asset = st.session_state.selected_item.get("Nomor Asset", "UNKNOWN")
+    kepemilikan = st.session_state.selected_item.get("Kepemilikan", "UNKNOWN")
+    nama_asset = st.session_state.selected_item.get("Nama Asset", "UNKNOWN")
 
+    # Generate label and QR code
+    label_img = generate_label(nomor_asset, kepemilikan, nama_asset)
+    qr_code_img = generate_qr_code(nomor_asset)
+
+    # # Display label image
+    # st.image(label_img, caption="Generated Asset Label", use_container_width=False)
+
+    st.download_button(label="📥 Download Label", data=label_img, file_name="asset_label.png", mime="image/png")
+
+# Fetch asset details
+drive_url = st.session_state.selected_item.get("Dokumentasi", "")
+
+image_path = None  # Default to no image
 if drive_url:
-    service = get_drive_service()
     folder_id = extract_folder_id(drive_url)
 
     if folder_id:
+        service = get_drive_service()
         images = list_images_in_folder(service, folder_id)
 
         if images:
-            # Download only the first image
             first_image = images[0]
-            first_image_path = download_image(service, first_image["id"], first_image["name"])
+            image_path = download_image(service, first_image["id"], first_image["name"])
 
-            # Layout: Image on the left, key details on the right
-            col1, col2 = st.columns([3, 5])
+# Layout: Image on the left, key details on the right
+col1, col2 = st.columns([3, 5])
 
-            with col1:
-                st.image(first_image_path, caption="📷 Asset Image", use_container_width=True)
-
-            with col2:
-                st.write("### 📄 Asset Information")
-                # Upper-right fields
-                details_top = {
-                    "🆔 Nomor Asset": "Nomor Asset",
-                    "📍 Penempatan Aset": "PENEMPATAN ASET",
-                    "🔗 Sumber": "Sumber",
-                    "🏷️ Kelompok Aset": "Kelompok Aset",
-                    "📝 Kepemilikan": "Kepemilikan",
-                    "📆 Pembelian": f"{st.session_state.selected_item.get('Bulan Beli', '')} - {st.session_state.selected_item.get('Tahun Beli', '')}",
-                    "📊 Qty": "Qty",
-                    "🖼️ Dokumentasi": "Dokumentasi",
-                    "🧾 Invoice": "Invoice",
-                    "📌 Status": "Status",
-                }
-
-                # Display in col2 (Right Side)
-                with col2:
-                    for label, field in details_top.items():
-                        value = str(st.session_state.selected_item.get(field, "")).strip()
-
-                        # Show only non-empty values
-                        if value and value != "-":
-                            st.write(f"**{label}:** {value}")
-
-
-            # Below Section - Financial Information
-            st.write("---")
-            st.write("### 💰 Financial & Valuation Details")
-
-            details_bottom = {
-                "💰 Harga Perolehan": "Harga Perolehan",
-                "📆 Pembelian": f"{st.session_state.selected_item.get('Bulan Beli', '')} - {st.session_state.selected_item.get('Tahun Beli', '')}",
-                "📈 Umur Ekonomis (years)": "Umur Ekonomis",
-                "📉 Nilai Penyusutan per Bulan": "Nilai Penyusutan per Bulan",
-                "💎 Valuasi Asset 2019": "VALUASI ASSET 2019",
-                "💎 Valuasi Asset 2020": "VALUASI ASSET 2020",
-                "💎 Valuasi Asset 2021": "VALUASI ASSET 2021",
-                "💎 Valuasi Asset 2022": "VALUASI ASSET 2022",
-                "💎 Valuasi Asset 2023": "VALUASI ASSET 2023",
-                "💎 Valuasi Asset 2024": "VALUASI ASSET 2024",
-                "💎 Valuasi Asset 2025": "VALUASI ASSET 2025",
-                "🏦 Nilai Buku 2024": "Nilai Buku 2024",
-                "📌 Status": "Status",
-                "🔖 Label": "Label"
-            }
-
-            for label, field in details_bottom.items():
-                value = str(st.session_state.selected_item.get(field, "")).strip()
-                # Apply formatting for numeric fields
-                if field in ["Harga Perolehan", "Umur Ekonomis", "Nilai Penyusutan per Bulan",
-                            "VALUASI ASSET 2019", "VALUASI ASSET 2020", "VALUASI ASSET 2021",
-                            "VALUASI ASSET 2022", "VALUASI ASSET 2023", "VALUASI ASSET 2024",
-                            "VALUASI ASSET 2025", "Nilai Buku 2024"]:
-                    value = format_number(value)
-
-                # Only display non-empty values
-                if value and value != "-":
-                    st.write(f"**{label}:** {value}")
-     
-        else:
-            st.warning("⚠️ No images found in the folder.")
+with col1:
+    if image_path:
+        st.image(image_path, caption="📷 Asset Image", use_container_width=True)
     else:
-        st.error("❌ Invalid Google Drive URL.")
-else:
-    st.warning("⚠️ Please enter a valid Google Drive folder URL.")
+        st.warning("⚠️ No image available.")
+
+with col2:
+    st.write("### 📄 Asset Information")
+    details_top = {
+        "🆔 Nomor Asset": "Nomor Asset",
+        "📍 Penempatan Aset": "PENEMPATAN ASET",
+        "🔗 Sumber": "Sumber",
+        "🏷️ Kelompok Aset": "Kelompok Aset",
+        "📝 Kepemilikan": "Kepemilikan",
+        "📆 Pembelian": f"{st.session_state.selected_item.get('Bulan Beli', '')} - {st.session_state.selected_item.get('Tahun Beli', '')}",
+        "📊 Qty": "Qty",
+        "🖼️ Dokumentasi": "Dokumentasi",
+        "🧾 Invoice": "Invoice",
+        "📌 Status": "Status",
+    }
+
+    for label, field in details_top.items():
+        value = str(st.session_state.selected_item.get(field, "")).strip()
+        if value and value != "-":
+            st.write(f"**{label}:** {value}")
+
+# Below Section - Financial Information
+st.write("---")
+st.write("### 💰 Financial & Valuation Details")
+
+details_bottom = {
+    "💰 Harga Perolehan": "Harga Perolehan",
+    "📆 Pembelian": f"{st.session_state.selected_item.get('Bulan Beli', '')} - {st.session_state.selected_item.get('Tahun Beli', '')}",
+    "📈 Umur Ekonomis (years)": "Umur Ekonomis",
+    "📉 Nilai Penyusutan per Bulan": "Nilai Penyusutan per Bulan",
+    "💎 Valuasi Asset 2019": "VALUASI ASSET 2019",
+    "💎 Valuasi Asset 2020": "VALUASI ASSET 2020",
+    "💎 Valuasi Asset 2021": "VALUASI ASSET 2021",
+    "💎 Valuasi Asset 2022": "VALUASI ASSET 2022",
+    "💎 Valuasi Asset 2023": "VALUASI ASSET 2023",
+    "💎 Valuasi Asset 2024": "VALUASI ASSET 2024",
+    "💎 Valuasi Asset 2025": "VALUASI ASSET 2025",
+    "🏦 Nilai Buku 2024": "Nilai Buku 2024",
+    "📌 Status": "Status",
+    "🔖 Label": "Label"
+}
+
+for label, field in details_bottom.items():
+    value = str(st.session_state.selected_item.get(field, "")).strip()
+    if field in ["Harga Perolehan", "Umur Ekonomis", "Nilai Penyusutan per Bulan",
+                 "VALUASI ASSET 2019", "VALUASI ASSET 2020", "VALUASI ASSET 2021",
+                 "VALUASI ASSET 2022", "VALUASI ASSET 2023", "VALUASI ASSET 2024",
+                 "VALUASI ASSET 2025", "Nilai Buku 2024"]:
+        value = format_number(value)
+
+    if value and value != "-":
+        st.write(f"**{label}:** {value}")
