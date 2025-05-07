@@ -40,4 +40,4 @@ __pycache__/
 token_sheet.json
 token.json
 ./downloaded_images
-.downloaded_images/
+.downloaded_images/token.json
