@@ -39,5 +39,4 @@ __pycache__/
 
 token_sheet.json
 token.json
-*.png
 ./downloaded_images
