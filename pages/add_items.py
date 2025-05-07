@@ -131,6 +131,7 @@ if submitted:
 
         # Download Button
         st.download_button("📥 Download Label", label_img, file_name="asset_label.png", mime="image/png")
-
+        
+        st.switch_page("pages/detail_products.py")
     else:
         st.error("Nomor Asset Wajib Terisi")

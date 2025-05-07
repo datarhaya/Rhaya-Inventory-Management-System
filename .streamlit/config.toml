@@ -5,9 +5,11 @@ toolbarMode = "viewer"
 
 
 [theme]
-primaryColor="#d33682"
-backgroundColor="#0B192C"
-secondaryBackgroundColor="#1E3E62"
-textColor="#fafafa"
+primaryColor="#006A71"
+backgroundColor="#F2EFE7"
+secondaryBackgroundColor="#48A6A7"
+textColor="#1B1B1B"
 font="sans serif"
 
+[ui]
+hideTopBar = true

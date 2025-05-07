@@ -4,6 +4,7 @@ import re
 import json
 import textwrap
 import qrcode
+import requests
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
 from googleapiclient.discovery import build
@@ -141,7 +142,7 @@ def generate_qr_code(nomor_asset):
     return img_bytes
 
 # Streamlit App
-st.title("📦 Asset Details")
+# st.title("📦 Asset Details")
 col1, col2, col3 = st.columns(3)
 with col1:
     if st.button("⬅️ Back to Home"):
@@ -185,15 +186,32 @@ if drive_url:
 col1, col2 = st.columns([3, 5])
 
 with col1:
-    if image_path:
-        st.image(image_path, caption="📷 Asset Image", use_container_width=True)
-    else:
-        st.warning("⚠️ No image available.")
+    # Show loading spinner while image loads
+    with st.spinner('🔄 Loading image...'):
+        if image_path:
+            try:
+                if image_path.startswith("http"):
+                    response = requests.get(image_path)
+                    img = Image.open(BytesIO(response.content))
+                else:
+                    img = Image.open(image_path)
+                st.image(img, use_container_width=True)
+            except Exception as e:
+                st.error(f"Failed to load image: {e}")
+                st.image('assets/image not found placeholder.png', caption="Image Not Found")
+        else:
+            st.image('assets/image not found placeholder.png', caption="Image Not Found")
+
+    # if image_path:
+    #     st.image(image_path, use_container_width=True)
+    # else:
+    #     st.image('assets/image not found placeholder.png', caption="Image Not Found")
 
 with col2:
     st.write("### 📄 Asset Information")
     details_top = {
         "🆔 Nomor Asset": "Nomor Asset",
+        "📍 Nama Asset": "Nama Asset",
         "📍 Penempatan Aset": "PENEMPATAN ASET",
         "🔗 Sumber": "Sumber",
         "🏷️ Kelompok Aset": "Kelompok Aset",

@@ -11,10 +11,29 @@ SCOPES = st.secrets["gsheet_auth"]["SCOPES"]
 SPREADSHEET_ID = st.secrets["gsheet_auth"]["SPREADSHEET_ID"]
 SHEET_NAME = st.secrets["gsheet_auth"]["SHEET_NAME"]
 
-st.set_page_config(initial_sidebar_state="collapsed", layout="wide", page_icon="🎬", page_title="Knowledge Management Database")
+st.set_page_config(initial_sidebar_state="expanded", layout="wide", page_icon="🎬", page_title="Knowledge Management Database")
 
 with open( pathlib.Path("app/styles.css") ) as f:
     st.markdown(f'<style>{f.read()}</style>' , unsafe_allow_html= True)
+
+st.markdown("""
+<style>
+    [data-testid=stSidebar] {
+        background-color: #0D2A52;
+    }
+    /* Change the text color inside sidebar selectbox */
+    [data-testid=stSidebar] .stSelectbox label {
+        color: white;
+    }
+    [data-testid=stSidebar] .stSelectbox div[data-baseweb="select"] {
+        color: white;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+logo_url = "assets/RHF LOGO WHITE.png"
+st.sidebar.image(logo_url)
+
 
 st.markdown(
     """

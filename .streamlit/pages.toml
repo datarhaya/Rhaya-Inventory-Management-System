@@ -1,6 +1,6 @@
 [[pages]]
 path = "pages/dashboard.py"
-name = "Rhaya Flicks Inventory Management Center"
+name = "Rhaya Flicks Asset Management Center"
 icon = ""
 
 [[pages]]

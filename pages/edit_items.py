@@ -133,7 +133,6 @@ if submitted:
     for key, value in zip(session_keys, update_values):
         st.session_state.selected_item[key] = value
 
-
 # Back button
 if st.button("⬅️ Back to Asset Details"):
     st.switch_page("pages/detail_products.py")
