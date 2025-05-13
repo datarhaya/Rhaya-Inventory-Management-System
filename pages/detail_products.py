@@ -26,6 +26,9 @@ from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
 
+import concurrent.futures
+
+
 # Google Drive API Setup
 SCOPES = ["https://www.googleapis.com/auth/drive"]
 json_data = dict(st.secrets["gdrive_auth"]["token_json"])
@@ -243,7 +246,26 @@ if drive_url:
 # Layout: Image on the left, key details on the right
 col1, col2 = st.columns([3, 5])
 
-import concurrent.futures
+
+def is_url(value):
+        return re.match(r'^https?://', value)
+
+def render_field(label, value):
+    value = str(value)  # <-- pastikan nilai jadi string
+    if re.match(r'^https?://', value):
+        value_html = f'<a href="{value}" target="_blank" style="word-wrap: break-word; color: #3366cc;">{value}</a>'
+    else:
+        value_html = value
+
+    st.markdown(f"""
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin: 0.25rem 0;">
+            <div style="width: 35%; font-weight: bold;">{label}</div>
+            <div style="width: 60%; word-wrap: break-word; word-break: break-word; overflow-wrap: break-word; max-width: 100%;">
+                {value_html}
+            </div>
+        </div>
+        <hr style="margin: 4px 0 10px 0; border: none; border-top: 1px solid rgba(0,0,0,0.1);" />
+    """, unsafe_allow_html=True)
 
 # --- Asynchronous Image Loader ---
 def load_image(image_path):
@@ -277,26 +299,6 @@ with col2:
         "Status": "Status",
     }
 
-    def is_url(value):
-        return re.match(r'^https?://', value)
-
-    def render_field(label, value):
-        value = str(value)  # <-- pastikan nilai jadi string
-        if re.match(r'^https?://', value):
-            value_html = f'<a href="{value}" target="_blank" style="word-wrap: break-word; color: #3366cc;">{value}</a>'
-        else:
-            value_html = value
-
-        st.markdown(f"""
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin: 0.25rem 0;">
-                <div style="width: 35%; font-weight: bold;">{label}</div>
-                <div style="width: 60%; word-wrap: break-word; word-break: break-word; overflow-wrap: break-word; max-width: 100%;">
-                    {value_html}
-                </div>
-            </div>
-            <hr style="margin: 4px 0 10px 0; border: none; border-top: 1px solid rgba(0,0,0,0.1);" />
-        """, unsafe_allow_html=True)
-
     # Use this to loop through the fields
     for label, field in details_top.items():
         value = str(data_asset.get(field, "")).strip()
@@ -323,7 +325,6 @@ with col1:
 # Below Section - Financial Information
 st.write("---")
 st.write("### 💰 Financial & Valuation Details")
-
 
 # Helper to parse number
 def parse_number(value):
@@ -355,7 +356,7 @@ label = data_asset.get("Label", "-")
 if tahun_beli:
     # --- Depreciation calculation
     start_month = parse_month(bulan_beli)
-    start_date = datetime(tahun_beli, start_month, 1)
+    start_date = datetime(int(tahun_beli), int(start_month), 1)
     today = datetime.today()
 
     if penyusutan_per_bulan > 0:
