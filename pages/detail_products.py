@@ -1,12 +1,19 @@
-import streamlit as st
 import os
 import re
+import time
 import json
-import textwrap
-import qrcode
 import requests
-from io import BytesIO
+import base64
+
+
 from PIL import Image, ImageDraw, ImageFont
+import qrcode
+import textwrap
+from io import BytesIO
+
+import streamlit as st
+from streamlit_cookies_controller import CookieController
+
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
@@ -16,6 +23,28 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 SCOPES = ["https://www.googleapis.com/auth/drive"]
 json_data = dict(st.secrets["gdrive_auth"]["token_json"])
 IMAGE_FOLDER = "downloaded_images"
+
+controller = CookieController()
+cookies = controller.getAll()
+
+if "retry_count" not in st.session_state:
+    st.session_state.retry_count = 0
+
+if "selected_item" in st.session_state:
+    data_asset = st.session_state['selected_item']
+elif "selected_item" in cookies:
+    data_asset = cookies['selected_item']
+else:
+    if st.session_state.retry_count < 3:
+        st.session_state.retry_count += 1
+
+        st.warning(f"Loading asset data... Try {st.session_state.retry_count} / 3")  # Temporary message
+        time.sleep(0.5)
+        st.rerun()
+    else:
+        st.error("Gagal mendapatkan data asset. Kembali ke Halaman Utama")
+        time.sleep(1)
+        st.switch_page("pages/dashboard.py")
 
 def get_drive_service():
     creds = None
@@ -70,62 +99,87 @@ def format_number(value):
         return f"{num:,.0f}"  # Force no decimals
     except ValueError:
         return value  # Return original if not a number
-    
-# Function to generate asset label
-def generate_label(nomor_asset, kepemilikan, nama_asset):
-    label_width, label_height = 227, 151  # 60mm x 40mm at 96 DPI
 
-    # Create blank label
-    label = Image.new("RGB", (label_width, label_height), "white")
+def generate_label(nomor_asset, nama_asset):
+    # Physical size: 60mm x 40mm → pixels at 300 DPI
+    width, height = int(60 / 25.4 * 300), int(40 / 25.4 * 300)  # 708 x 472 px
+    label = Image.new("RGB", (width, height), "white")
     draw = ImageDraw.Draw(label)
 
+    # Split into halves
+    split_x = width // 2
+    draw.rectangle([0, 0, split_x, height], fill="black")
+
     # Generate QR Code
-    qr = qrcode.QRCode(box_size=3, border=2)
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_H,
+        box_size=10,
+        border=1,
+    )
     qr.add_data(nomor_asset)
     qr.make(fit=True)
-    qr_img = qr.make_image(fill="black", back_color="white")
+    qr_img = qr.make_image(fill_color="white", back_color="black").convert("RGB")
 
-    # Resize QR Code
-    qr_size = 90  
+    # Resize QR
+    qr_size = int(height * 0.5)
     qr_img = qr_img.resize((qr_size, qr_size))
 
-    # Load font
-    try:
-        font = ImageFont.truetype("arial.ttf", 14)
-    except IOError:
-        font = ImageFont.load_default()
-
-    # Position QR Code
-    qr_x = 5
-    qr_y = (label_height - qr_size) // 2
+    qr_x = (split_x - qr_size) // 2
+    qr_y = int(height * 0.1)
     label.paste(qr_img, (qr_x, qr_y))
 
-    # Text positions
-    text_x = qr_x + qr_size + 5  
-    text_y = qr_y + 7
+    # Logo under QR
+    try:
+        logo = Image.open("assets/RHF LOGO WHITE.png").convert("RGBA")
+        logo_height = int(height * 0.3)
+        logo_ratio = logo.width / logo.height
+        logo = logo.resize((int(logo_ratio * logo_height), logo_height))
+        logo_x = (split_x - logo.width) // 2
+        logo_y = qr_y + qr_size + int(height * 0.04)
+        label.paste(logo, (logo_x, logo_y), logo)
+    except Exception as e:
+        print(f"⚠️ Logo not found: {e}")
 
-    # Wrap text for Nama Asset (Max 2 Lines)
-    max_width = label_width - text_x - 5  
-    wrapped_lines = textwrap.wrap(nama_asset, width=20)  
-    if len(wrapped_lines) > 2:
-        wrapped_nama_asset = wrapped_lines[:2]
-        wrapped_nama_asset[-1] += "..."  # Add ellipses if exceeded
-    else:
-        wrapped_nama_asset = wrapped_lines
+    # Load Soleil Bold font
+    try:
+        font = ImageFont.truetype("assets/PlusJakartaSans-ExtraBold.ttf", size=36)
+        font_no_asset = ImageFont.truetype("assets/PlusJakartaSans-Bold.ttf", size=32)
+    except:
+        font = ImageFont.load_default()
 
-    # Draw text
-    draw.text((text_x, text_y), f"{nomor_asset}", font=font, fill="black")  # Nomor Asset
-    draw.text((text_x, text_y + 20), f"{kepemilikan}", font=font, fill="black")  # Kepemilikan
-    
-    for i, line in enumerate(wrapped_nama_asset):
-        draw.text((text_x, text_y + 40 + (i * 20)), f"{line}", font=font, fill="black")
+    # Right half - asset name (top left)
+    text_x = split_x + int(width * 0.02)
+    text_y = int(height * 0.07)
+    wrapped = textwrap.fill(nama_asset.upper(), width=14)
+    draw.multiline_text((text_x, text_y), 
+                        wrapped,
+                        font=font,
+                        fill="black", 
+                        spacing=10, 
+                        font_size= 26)
 
-    # Save to memory
-    img_bytes = BytesIO()
-    label.save(img_bytes, format="PNG")
-    img_bytes.seek(0)
 
-    return img_bytes
+    # Bottom-right: nomor asset (multiline + right-aligned)
+    wrapped_nomor = textwrap.wrap(nomor_asset, width=12)
+    line_height = font_no_asset.getbbox("Ay")[3] + 6  # Height + spacing
+    total_height = len(wrapped_nomor) * line_height
+
+    # Bottom-right Y position (with padding)
+    start_y = height - int(height * 0.1) - total_height
+
+    for i, line in enumerate(wrapped_nomor):
+        line_width = draw.textlength(line, font=font_no_asset)
+        x = width - int(width * 0.04) - int(line_width)  # Right-aligned
+        y = start_y + i * line_height
+        draw.text((x, y), line, font=font_no_asset, fill="black")
+
+    # Save to memory with 300 DPI
+    output = BytesIO()
+    # label.save(output, format="PNG", dpi=(300, 300))
+    label.save(output, format="PDF", resolution=300.0)
+    output.seek(0)
+    return output
 
 # Function to generate QR code separately
 def generate_qr_code(nomor_asset):
@@ -141,34 +195,31 @@ def generate_qr_code(nomor_asset):
 
     return img_bytes
 
-# Streamlit App
-# st.title("📦 Asset Details")
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns([0.2, 0.2, 0.2, 0.4])
 with col1:
-    if st.button("⬅️ Back to Home"):
+    if st.button("⬅️ Back" , help= "Back to Home"):
         st.switch_page("pages/dashboard.py")
 
 with col2:
-    if st.button("Edit Items"):
+    if st.button("📝 Edit", help= 'Edit Items'):
         st.switch_page("pages/edit_items.py")
 
 with col3:
     # Fetch asset details
-    nomor_asset = st.session_state.selected_item.get("Nomor Asset", "UNKNOWN")
-    kepemilikan = st.session_state.selected_item.get("Kepemilikan", "UNKNOWN")
-    nama_asset = st.session_state.selected_item.get("Nama Asset", "UNKNOWN")
+    nomor_asset = data_asset.get("Nomor Asset", "UNKNOWN")
+    nama_asset = data_asset.get("Nama Asset", "UNKNOWN")
 
     # Generate label and QR code
-    label_img = generate_label(nomor_asset, kepemilikan, nama_asset)
+    label_img = generate_label(nomor_asset, nama_asset)
     qr_code_img = generate_qr_code(nomor_asset)
 
-    # # Display label image
-    # st.image(label_img, caption="Generated Asset Label", use_container_width=False)
-
-    st.download_button(label="📥 Download Label", data=label_img, file_name="asset_label.png", mime="image/png")
+    # st.sidebar.download_button(label="📥 Download Label", data=label_img, file_name="asset_label.png", mime="image/png")
+    # st.download_button(label="📥 Download",help="Download Image", data=label_img, file_name="asset_label.png", mime="image/png")
+    st.sidebar.download_button(label="📥 Download Label", data=label_img, file_name="label.pdf", mime="application/pdf")
+    st.download_button(label="📥 Download",help="Download Image", data=label_img, file_name="label.pdf", mime="application/pdf")
 
 # Fetch asset details
-drive_url = st.session_state.selected_item.get("Dokumentasi", "")
+drive_url = data_asset.get("Dokumentasi", "")
 
 image_path = None  # Default to no image
 if drive_url:
@@ -185,77 +236,167 @@ if drive_url:
 # Layout: Image on the left, key details on the right
 col1, col2 = st.columns([3, 5])
 
-with col1:
-    # Show loading spinner while image loads
-    with st.spinner('🔄 Loading image...'):
-        if image_path:
-            try:
-                if image_path.startswith("http"):
-                    response = requests.get(image_path)
-                    img = Image.open(BytesIO(response.content))
-                else:
-                    img = Image.open(image_path)
-                st.image(img, use_container_width=True)
-            except Exception as e:
-                st.error(f"Failed to load image: {e}")
-                st.image('assets/image not found placeholder.png', caption="Image Not Found")
-        else:
-            st.image('assets/image not found placeholder.png', caption="Image Not Found")
+import concurrent.futures
 
-    # if image_path:
-    #     st.image(image_path, use_container_width=True)
-    # else:
-    #     st.image('assets/image not found placeholder.png', caption="Image Not Found")
+# --- Asynchronous Image Loader ---
+def load_image(image_path):
+    try:
+        if image_path.startswith("http"):
+            response = requests.get(image_path)
+            img = Image.open(BytesIO(response.content))
+        else:
+            img = Image.open(image_path)
+        return img
+    except Exception as e:
+        return f"Failed to load image: {e}"
+
+# Trigger image loading in parallel
+with concurrent.futures.ThreadPoolExecutor() as executor:
+    image_future = executor.submit(load_image, image_path)
 
 with col2:
     st.write("### 📄 Asset Information")
     details_top = {
-        "🆔 Nomor Asset": "Nomor Asset",
-        "📍 Nama Asset": "Nama Asset",
-        "📍 Penempatan Aset": "PENEMPATAN ASET",
-        "🔗 Sumber": "Sumber",
-        "🏷️ Kelompok Aset": "Kelompok Aset",
-        "📝 Kepemilikan": "Kepemilikan",
-        "📆 Pembelian": f"{st.session_state.selected_item.get('Bulan Beli', '')} - {st.session_state.selected_item.get('Tahun Beli', '')}",
-        "📊 Qty": "Qty",
-        "🖼️ Dokumentasi": "Dokumentasi",
-        "🧾 Invoice": "Invoice",
-        "📌 Status": "Status",
+        "Nomor Asset": "Nomor Asset",
+        "Nama Asset": "Nama Asset",
+        "Penempatan Aset": "PENEMPATAN ASET",
+        "Sumber": "Sumber",
+        "Kelompok Aset": "Kelompok Aset",
+        "Kepemilikan": "Kepemilikan",
+        "Pembelian": f"{data_asset.get('Bulan Beli', '')} - {data_asset.get('Tahun Beli', '')}",
+        "Qty": "Qty",
+        "Dokumentasi": "Dokumentasi",
+        "Invoice": "Invoice",
+        "Status": "Status",
     }
 
+    def is_url(value):
+        return re.match(r'^https?://', value)
+
+    def render_field(label, value):
+        if re.match(r'^https?://', value):
+            value_html = f'<a href="{value}" target="_blank" style="word-wrap: break-word; color: #3366cc;">{value}</a>'
+        else:
+            value_html = value
+
+        st.markdown(f"""
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin: 0.25rem 0;">
+                <div style="width: 35%; font-weight: bold;">{label}</div>
+                <div style="width: 60%; word-wrap: break-word; word-break: break-word; overflow-wrap: break-word; max-width: 100%;">
+                    {value_html}
+                </div>
+            </div>
+            <hr style="margin: 4px 0 10px 0; border: none; border-top: 1px solid rgba(0,0,0,0.1);" />
+        """, unsafe_allow_html=True)
+
+    # Use this to loop through the fields
     for label, field in details_top.items():
-        value = str(st.session_state.selected_item.get(field, "")).strip()
+        value = str(data_asset.get(field, "")).strip()
         if value and value != "-":
-            st.write(f"**{label}:** {value}")
+            render_field(label, value)
+
+with col1:
+    with st.spinner("🔄 Loading image..."):
+        image_result = image_future.result()
+        if isinstance(image_result, Image.Image):
+            buffered = BytesIO()
+            image_result.save(buffered, format="PNG")
+            img_base64 = base64.b64encode(buffered.getvalue()).decode()
+            st.markdown(f"""
+                <div style="display: flex; align-items: center; justify-content: center; height: 100%; min-height: 650px;">
+                    <img src="data:image/png;base64,{img_base64}" style="max-width: 100%; height: auto;" />
+                </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.error(image_result)
+            st.image('assets/image not found placeholder.png', caption="Image Not Found")
+
 
 # Below Section - Financial Information
 st.write("---")
 st.write("### 💰 Financial & Valuation Details")
 
-details_bottom = {
-    "💰 Harga Perolehan": "Harga Perolehan",
-    "📆 Pembelian": f"{st.session_state.selected_item.get('Bulan Beli', '')} - {st.session_state.selected_item.get('Tahun Beli', '')}",
-    "📈 Umur Ekonomis (years)": "Umur Ekonomis",
-    "📉 Nilai Penyusutan per Bulan": "Nilai Penyusutan per Bulan",
-    "💎 Valuasi Asset 2019": "VALUASI ASSET 2019",
-    "💎 Valuasi Asset 2020": "VALUASI ASSET 2020",
-    "💎 Valuasi Asset 2021": "VALUASI ASSET 2021",
-    "💎 Valuasi Asset 2022": "VALUASI ASSET 2022",
-    "💎 Valuasi Asset 2023": "VALUASI ASSET 2023",
-    "💎 Valuasi Asset 2024": "VALUASI ASSET 2024",
-    "💎 Valuasi Asset 2025": "VALUASI ASSET 2025",
-    "🏦 Nilai Buku 2024": "Nilai Buku 2024",
-    "📌 Status": "Status",
-    "🔖 Label": "Label"
-}
+from datetime import datetime
+from math import floor
+from dateutil.relativedelta import relativedelta
+import calendar
 
-for label, field in details_bottom.items():
-    value = str(st.session_state.selected_item.get(field, "")).strip()
-    if field in ["Harga Perolehan", "Umur Ekonomis", "Nilai Penyusutan per Bulan",
-                 "VALUASI ASSET 2019", "VALUASI ASSET 2020", "VALUASI ASSET 2021",
-                 "VALUASI ASSET 2022", "VALUASI ASSET 2023", "VALUASI ASSET 2024",
-                 "VALUASI ASSET 2025", "Nilai Buku 2024"]:
-        value = format_number(value)
+# Helper to parse number
+def parse_number(value):
+    try:
+        return float(str(value).replace(",", "").replace("Rp", "").strip())
+    except:
+        return 0.0
+    
+def parse_month(bulan_str):
+    """Convert Indonesian month name to month number."""
+    months = {
+        "januari": 1, "februari": 2, "maret": 3, "april": 4, "mei": 5, "juni": 6,
+        "juli": 7, "agustus": 8, "september": 9, "oktober": 10, "november": 11, "desember": 12
+    }
+    return months.get(bulan_str.lower(), 1)
 
-    if value and value != "-":
-        st.write(f"**{label}:** {value}")
+def format_rupiah(value):
+    return f"Rp {value:,.0f}".replace(",", ".")
+
+# --- Extract fields
+harga_perolehan = parse_number(data_asset.get("Harga Perolehan", "0"))
+penyusutan_per_bulan = parse_number(data_asset.get("Nilai Penyusutan per Bulan", "0"))
+umur_ekonomis = data_asset.get("Umur Ekonomis", "-")
+bulan_beli = data_asset.get("Bulan Beli", "Januari")
+tahun_beli = data_asset.get("Tahun Beli", None)
+status = data_asset.get("Status", "-")
+label = data_asset.get("Label", "-")
+
+if tahun_beli:
+    # --- Depreciation calculation
+    start_month = parse_month(bulan_beli)
+    start_date = datetime(tahun_beli, start_month, 1)
+    today = datetime.today()
+
+    if penyusutan_per_bulan > 0:
+        total_months = floor(harga_perolehan / penyusutan_per_bulan)
+        end_year = tahun_beli + (start_month - 1 + total_months) // 12
+        end_month = (start_month - 1 + total_months) % 12 + 1
+        end_date = datetime(end_year, end_month, 1)
+
+        elapsed_months = max(0, (today.year - start_date.year) * 12 + (today.month - start_date.month))
+        progress = min(1.0, elapsed_months / total_months)
+        nilai_buku = max(0, harga_perolehan - (penyusutan_per_bulan * elapsed_months))
+    else:
+        total_months = 0
+        progress = 0
+        nilai_buku = harga_perolehan
+
+    # --- Summary Fields
+
+    summary_fields = {
+        "📅 Bulan Tahun Beli": f"{bulan_beli} {tahun_beli}",
+        "💰 Harga Perolehan": format_rupiah(harga_perolehan),
+        "📉 Nilai Buku Sekarang": format_rupiah(nilai_buku),
+        "📈 Umur Ekonomis": f"{umur_ekonomis} tahun",
+        "📌 Status": status,
+        "🔖 Label": label
+    }
+
+    for label, value in summary_fields.items():
+        render_field(label, value)
+
+    # --- Progress bar
+    if penyusutan_per_bulan > 0:
+        remaining_months = max(0, (end_date.year - today.year) * 12 + (end_date.month - today.month))
+
+        st.markdown(
+            f"📉 Aset akan **habis nilai** pada **{calendar.month_name[end_month]} {end_year}** "
+            f"setelah {total_months} bulan. "
+            f"<br>🕒 Sisa waktu: **{remaining_months} bulan** dari sekarang.",
+            unsafe_allow_html=True
+        )
+        st.progress(progress, text=f"{int(progress * 100)}% penyusutan")
+    else:
+        st.warning("Nilai penyusutan per bulan tidak valid atau nol.")
+
+
+st.write("---")
+st.write("### Others Details")
+st.write("Disini akan diisikan detail kondisi barang, serial number, tipe lengkap dan lain lain")

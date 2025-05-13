@@ -10,7 +10,9 @@ from datetime import datetime
 
 import pandas as pd
 import plotly.express as px
+
 import streamlit as st
+from streamlit_cookies_controller import CookieController
 
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
@@ -21,6 +23,8 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 SCOPES = ["https://www.googleapis.com/auth/drive"]
 json_data = dict(st.secrets["gdrive_auth"]["token_json"])
 IMAGE_FOLDER = "downloaded_images"
+
+controller = CookieController()
 
 with open( pathlib.Path("app/styles.css") ) as f:
     st.markdown(f'<style>{f.read()}</style>' , unsafe_allow_html= True)
@@ -48,43 +52,6 @@ st.markdown(
 )
 
 data = st.session_state['data']
-# st.write(data)
-
-col1, col2 = st.columns([0.4, 0.6], border=True)
-
-total_items = data["Qty"].sum()
-col1.metric("Total Asset", f"{total_items:,.0f} Asset")
-
-total_price = data["Harga Perolehan"].sum()
-col2.metric("Total Acquisition Price", f"Rp. {total_price:,.0f}")
-
-st.metric("Ownership Distribution", f"")
-
-ownership_percentage = (data["Kepemilikan"].value_counts(normalize=True) * 100).round(2)
-# Convert ownership data into a DataFrame
-ownership_df = pd.DataFrame({
-    "Kepemilikan": ownership_percentage.index,
-    "Percentage": ownership_percentage.values
-})
-
-# Create Pie Chart
-fig = px.pie(ownership_df, 
-             names="Kepemilikan", 
-             values="Percentage", 
-             hole=0.3)  # Creates a donut-style pie chart
-
-st.plotly_chart(fig, use_container_width=True)
-
-if st.button("Scan Barcode to Search Inventory"):
-    st.switch_page("pages/scan_barcode.py")
-
-# Display Table with Radio Button for Selection
-col1, col2 = st.columns([0.6, 0.4])
-with col1:
-    st.subheader("Inventory Details") 
-with col2:  
-    if st.button("➕ Add New Item"):
-        st.switch_page("pages/add_items.py")
 
 important_columns = ["Nomor Asset", "Nama Asset", "Tahun Beli", "Bulan Beli"]
 
@@ -105,7 +72,7 @@ selected_kepemilikan = st.sidebar.multiselect("👥 Kepemilikan", kepemilikan_op
 min_year = int(data["Tahun Beli"].min())
 max_year = int(data["Tahun Beli"].max())
 selected_year_range = st.sidebar.slider("📅 Tahun Beli", min_year, max_year, (min_year, max_year))
-st.write(data.sort_values("Tahun Beli"))
+# st.write(data.sort_values("Tahun Beli"))
 # Bulan in ordered list
 bulan_order = [
     "Januari", "Februari", "Maret", "April", "Mei", "Juni",
@@ -144,10 +111,120 @@ filtered_data = filtered_data[
     (filtered_data["Harga Perolehan"] >= selected_price_range[0]) &
     (filtered_data["Harga Perolehan"] <= selected_price_range[1])
 ]
-
 # Update this line to use filtered_data instead of full data
 data_filtered = filtered_data[important_columns]
 
+# Display Table with Radio Button for Selection
+# Center and align buttons closely together
+# col1, col2, col3, col4, col5 = st.columns([3, 2, 0.1, 2, 3])  # Outer columns as spacers
+col1, col2, col3, col4 = st.columns([2, 0.01, 2, 6])  # Outer columns as spacers
+
+with col1:
+    if st.button("📷 Scan Barcode"):
+        st.switch_page("pages/scan_barcode.py")
+
+with col3:
+    if st.button("➕ Add New Item"):
+        st.switch_page("pages/add_items.py")
+
+with st.expander("See Dashboard"):
+    col1, col2 = st.columns([0.4, 0.6], border=True)
+
+    total_items = filtered_data["Qty"].sum()
+    col1.metric("Total Asset", f"{total_items:,.0f} Asset")
+
+    total_price = filtered_data["Harga Perolehan"].sum()
+    col2.metric("Total Acquisition Price", f"Rp. {total_price:,.0f}")
+
+    col1, col2 = st.columns(2, border= True)
+    with col1:
+        st.metric("Ownership Distribution", f"")
+
+        ownership_percentage = (filtered_data["Kepemilikan"].value_counts(normalize=True) * 100).round(2)
+        # Convert ownership data into a DataFrame
+        ownership_df = pd.DataFrame({
+            "Kepemilikan": ownership_percentage.index,
+            "Percentage": ownership_percentage.values
+        })
+
+        # Create Pie Chart
+        fig = px.pie(ownership_df, 
+                    names="Kepemilikan", 
+                    values="Percentage", 
+                    hole=0.3)  # Creates a donut-style pie chart
+
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col2:
+
+        import plotly.graph_objects as go
+
+        # Aggregate data
+        acquisition_timeline = data.groupby("Tahun Beli").agg({
+            "Qty": "sum",
+            "Harga Perolehan": "sum"
+        }).reset_index()
+
+        # Create figure with dual y-axis
+        fig1 = go.Figure()
+
+        # Bar chart: Jumlah Aset (left Y-axis)
+        fig1.add_bar(
+            x=acquisition_timeline["Tahun Beli"],
+            y=acquisition_timeline["Qty"],
+            name="Jumlah Aset",
+            yaxis="y1"
+        )
+
+        # Line chart: Harga Perolehan (right Y-axis), scaled to juta Rp
+        fig1.add_trace(go.Scatter(
+            x=acquisition_timeline["Tahun Beli"],
+            y=acquisition_timeline["Harga Perolehan"] / 1_000_000,  # in millions
+            name="Harga Perolehan (Juta Rp)",
+            yaxis="y2",
+            mode="lines+markers",
+            line=dict(color="orange", width=3),
+            marker=dict(size=6)
+        ))
+
+        # Layout with dual axes
+        fig1.update_layout(
+            title="Jumlah Aset dan Harga Perolehan per Tahun",
+            xaxis=dict(title="Tahun Beli"),
+            yaxis=dict(
+                title="Jumlah Aset",
+                showgrid=False
+            ),
+            yaxis2=dict(
+                title="Harga Perolehan (Juta Rp)",
+                overlaying="y",
+                side="right",
+                showgrid=False
+            ),
+            legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=-0.3,  # Negative value moves it below the plot
+            xanchor="center",
+            x=0.5
+        ),
+            margin=dict(t=50, b=30),
+            height=400
+        )
+
+        # Show chart in Streamlit
+        st.plotly_chart(fig1, use_container_width=True)
+
+# if st.button("Scan Barcode to Search Inventory"):
+#     st.switch_page("pages/scan_barcode.py")
+
+# # Display Table with Radio Button for Selection
+# col1, col2 = st.columns([0.6, 0.4])
+# with col1:
+#     st.subheader("Inventory Details") 
+# with col2:  
+#     if st.button("➕ Add New Item"):
+#         st.switch_page("pages/add_items.py")
 
 def get_drive_service():
     creds = None
@@ -215,7 +292,6 @@ def fetch_first_image():
     else: 
         return None
         
-
 @st.dialog("Detail Asset", width='large')
 def show_detail(asset):
     st.subheader(f"{asset['Nama Asset']}")
@@ -253,7 +329,7 @@ def show_detail(asset):
     # Page link
     st.page_link('pages/detail_products.py', label=f'More Detail', icon='🗺️')
 
-
+st.markdown(' ', help="Click on left button on each row to select!")
 
 # Show filtered table
 event = st.dataframe(
@@ -276,7 +352,16 @@ if len(event.selection['rows']):
         st.session_state.selected_asset_no = asset_no
         # st.session_state.selected_item = data.iloc[selected_row].to_dict()
         st.session_state.selected_item = data[data['Nomor Asset'] == asset_no].iloc[0].to_dict()
-        
+
+        controller.set('selected_item', data[data['Nomor Asset'] == asset_no].iloc[0].to_dict())
+
         # Trigger dialog
         show_detail(st.session_state.selected_item)
         st.page_link('pages/detail_products.py', label=f'Goto {asset_no} Page', icon='🗺️')
+
+elif not event.selection['rows']:
+    st.write('No Selection')
+    selected_row = None
+    asset_no = None
+
+

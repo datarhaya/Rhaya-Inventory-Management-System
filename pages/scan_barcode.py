@@ -2,9 +2,11 @@ import streamlit as st
 import time
 from streamlit_qrcode_scanner import qrcode_scanner
 
-# Set page title
-st.title("🔍 Search Products")
+if st.button("⬅️ Back" , help= "Back to Home"):
+        st.switch_page("pages/dashboard.py")
 
+st.markdown("Scan QR Code Label Inventaris", help= 'Pastikan QR Code Ada Pada Kotak dan Terlihat Jelas')
+        
 # Open QR Scanner
 qr_code = qrcode_scanner(key="qrcode_scanner")
 
@@ -17,7 +19,7 @@ if qr_code:
     st.success(f"✅ QR Code Detected: {qr_code}")
     
     # Simulate delay for better user experience
-    time.sleep(0.5)
+    time.sleep(0.3)
 
     # Get the stored dataset
     if "data" in st.session_state:
