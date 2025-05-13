@@ -349,11 +349,11 @@ harga_perolehan = parse_number(data_asset.get("Harga Perolehan", "0"))
 penyusutan_per_bulan = parse_number(data_asset.get("Nilai Penyusutan per Bulan", "0"))
 umur_ekonomis = data_asset.get("Umur Ekonomis", "-")
 bulan_beli = data_asset.get("Bulan Beli", "Januari")
-tahun_beli = data_asset.get("Tahun Beli", None)
+tahun_beli = int(data_asset.get("Tahun Beli", 0))
 status = data_asset.get("Status", "-")
 label = data_asset.get("Label", "-")
 
-if tahun_beli:
+if tahun_beli > 0:
     # --- Depreciation calculation
     start_month = parse_month(bulan_beli)
     start_date = datetime(int(tahun_beli), int(start_month), 1)
@@ -363,7 +363,8 @@ if tahun_beli:
         total_months = floor(harga_perolehan / penyusutan_per_bulan)
         end_year = tahun_beli + (start_month - 1 + total_months) // 12
         end_month = (start_month - 1 + total_months) % 12 + 1
-        end_date = datetime(end_year, end_month, 1)
+        end_date = datetime(int(end_year), int(end_month), 1)
+
 
         elapsed_months = max(0, (today.year - start_date.year) * 12 + (today.month - start_date.month))
         progress = min(1.0, elapsed_months / total_months)
