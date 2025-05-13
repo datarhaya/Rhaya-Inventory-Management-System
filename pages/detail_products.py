@@ -5,14 +5,21 @@ import json
 import requests
 import base64
 
-
 from PIL import Image, ImageDraw, ImageFont
 import qrcode
 import textwrap
 from io import BytesIO
 
+import plotly.graph_objects as go
+import numpy as np
+
 import streamlit as st
 from streamlit_cookies_controller import CookieController
+
+from datetime import datetime
+from math import floor
+from dateutil.relativedelta import relativedelta
+import calendar
 
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
@@ -274,6 +281,7 @@ with col2:
         return re.match(r'^https?://', value)
 
     def render_field(label, value):
+        value = str(value)  # <-- pastikan nilai jadi string
         if re.match(r'^https?://', value):
             value_html = f'<a href="{value}" target="_blank" style="word-wrap: break-word; color: #3366cc;">{value}</a>'
         else:
@@ -316,10 +324,6 @@ with col1:
 st.write("---")
 st.write("### 💰 Financial & Valuation Details")
 
-from datetime import datetime
-from math import floor
-from dateutil.relativedelta import relativedelta
-import calendar
 
 # Helper to parse number
 def parse_number(value):
@@ -371,12 +375,11 @@ if tahun_beli:
     # --- Summary Fields
 
     summary_fields = {
-        "📅 Bulan Tahun Beli": f"{bulan_beli} {tahun_beli}",
-        "💰 Harga Perolehan": format_rupiah(harga_perolehan),
-        "📉 Nilai Buku Sekarang": format_rupiah(nilai_buku),
-        "📈 Umur Ekonomis": f"{umur_ekonomis} tahun",
-        "📌 Status": status,
-        "🔖 Label": label
+        "Bulan Tahun Beli": f"{bulan_beli} {tahun_beli}",
+        "Harga Perolehan": format_rupiah(harga_perolehan),
+        "Nilai Buku Sekarang": format_rupiah(nilai_buku),
+        "Umur Ekonomis": f"{umur_ekonomis} tahun",
+        "Nilai Penyusutan per Bulan": format_rupiah(penyusutan_per_bulan)
     }
 
     for label, value in summary_fields.items():
@@ -395,6 +398,66 @@ if tahun_beli:
         st.progress(progress, text=f"{int(progress * 100)}% penyusutan")
     else:
         st.warning("Nilai penyusutan per bulan tidak valid atau nol.")
+
+with st.expander("Detail Penyusutan"):
+    # --- Financial calculations for yearly summary
+    def calculate_yearly_depreciation(harga_perolehan, penyusutan_per_bulan, total_months):
+        depreciation_per_year = penyusutan_per_bulan * 12
+        nilai_buku_tahunan = []
+        total_depreciation_tahunan = []
+
+        for year in range(total_months // 12 + 1):
+            depreciation_this_year = min(depreciation_per_year * (year + 1), harga_perolehan)
+            remaining_value = harga_perolehan - depreciation_this_year
+            
+            # Stop calculation if the value is less than or equal to 0
+            if remaining_value <= 0:
+                break
+            
+            nilai_buku_tahunan.append(remaining_value)
+            total_depreciation_tahunan.append(depreciation_this_year)
+
+        return nilai_buku_tahunan, total_depreciation_tahunan
+
+    # Calculate yearly values
+    if tahun_beli and penyusutan_per_bulan > 0:
+        nilai_buku_tahunan, total_depreciation_tahunan = calculate_yearly_depreciation(
+            harga_perolehan, penyusutan_per_bulan, total_months
+        )
+
+        # --- Plotly chart setup
+        years = np.arange(tahun_beli, tahun_beli + len(nilai_buku_tahunan))
+
+        # Create a line chart for Nilai Buku Tahunan
+        line_trace = go.Scatter(
+            x=years, y=nilai_buku_tahunan, mode='lines+markers', name='Nilai Buku Tahunan',
+            line=dict(color='#0D2A52')
+        )
+
+        # Create a bar chart for Total Penyusutan Tahunan
+        bar_trace = go.Bar(
+            x=years, y=total_depreciation_tahunan, name='Total Penyusutan Tahunan',
+            marker=dict(color='#48A6A7')
+        )
+
+        # Create the layout for the chart
+        layout = go.Layout(
+            title='Perkembangan Nilai Buku dan Penyusutan Tahunan',
+            xaxis=dict(title='Tahun'),
+            yaxis=dict(title='Nilai (Rp)'),
+            barmode='group',
+            template='plotly_white'
+        )
+
+        # Combine both charts
+        fig = go.Figure(data=[line_trace, bar_trace], layout=layout)
+
+        # Display the chart with Streamlit
+        st.plotly_chart(fig)
+
+    else:
+        st.warning("Perhitungan nilai buku dan penyusutan tahunan gagal karena data tidak lengkap.")
+
 
 
 st.write("---")
